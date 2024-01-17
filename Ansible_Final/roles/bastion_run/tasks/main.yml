@@ -1,0 +1,64 @@
+---
+- name: Disable swap
+  command: swapoff -a
+  become: yes
+  ignore_errors: yes
+- name: Check if zram0 exists
+  stat:
+    path: /dev/zram0
+  register: zram0_exists
+  become: yes
+- name: Reset zram0
+  command: zramctl --reset /dev/zram0
+  when: zram0_exists.stat.exists
+  become: yes
+  ignore_errors: yes
+- name: Clean DNF cache
+  dnf:
+    update_cache: yes
+  become: true
+  environment:
+    YUM_DISABLE_REPO: kubernetes
+- name: Update DNF cache
+  dnf:
+    update_cache: yes
+  become: true
+- name: Import Kubernetes GPG key
+  rpm_key:
+    key: https://pkgs.k8s.io/core:/stable:/v1.26/rpm/repodata/repomd.xml.key
+  become: true
+- name: Add Kubernetes repository
+  ansible.builtin.yum_repository:
+    name: kubernetes
+    description: Kubernetes YUM repo
+    baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
+    gpgcheck: yes
+    gpgkey: https://packages.cloud.google.com/yum/doc/yum-key.gpg
+      https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+    enabled: yes
+  become: true
+- name: Install packages
+  dnf:
+    name:
+      - docker
+      - kubelet
+      - kubeadm
+      - kubectl
+    disable_excludes: kubernetes
+    state: present
+  become: true
+- name: Create ~/.kube directory
+  file:
+    path: /home/ec2-user/.kube
+    state: directory
+  become_user: ec2-user
+- name: Copy admin.conf
+  copy:
+    src: "{{ playbook_dir }}/remote_files/admin.conf"
+    dest: /home/ec2-user/.kube/config
+  become_user: ec2-user
+- name: Copy join-command.sh
+  copy:
+    src: "{{ playbook_dir }}/remote_files/join-command.sh"
+    dest: /home/ec2-user/.kube/join-command.sh
+  become_user: ec2-user

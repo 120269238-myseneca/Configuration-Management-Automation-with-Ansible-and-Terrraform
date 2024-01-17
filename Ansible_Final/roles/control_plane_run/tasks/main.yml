@@ -1,0 +1,136 @@
+---
+- name: Disable swap
+  command: swapoff -a
+  ignore_errors: yes
+- name: Check if zram0 exists
+  stat:
+    path: /dev/zram0
+  register: zram0_exists
+- name: Reset zram0
+  command: zramctl --reset /dev/zram0
+  when: zram0_exists.stat.exists
+  ignore_errors: yes
+- name: Clean YUM cache
+  yum:
+    update_cache: yes
+  become: true
+  environment:
+    YUM_DISABLE_REPO: kubernetes
+- name: Update YUM cache
+  yum:
+    update_cache: yes
+  become: true
+- name: Import Kubernetes GPG key
+  rpm_key:
+    key: https://pkgs.k8s.io/core:/stable:/v1.26/rpm/repodata/repomd.xml.key
+  become: true
+- name: Add Kubernetes repository
+  ansible.builtin.yum_repository:
+    name: kubernetes
+    description: Kubernetes YUM repo
+    baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
+    gpgcheck: yes
+    gpgkey: https://packages.cloud.google.com/yum/doc/yum-key.gpg
+      https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+    enabled: yes
+  become: true
+- name: Verify Kubernetes repository configuration
+  command: cat /etc/yum.repos.d/kubernetes.repo
+  register: repo_contents
+  changed_when: false
+- name: Display Kubernetes repository configuration
+  debug:
+    var: repo_contents.stdout
+- name: List available packages from Kubernetes repo
+  command: yum list available --disablerepo="*" --enablerepo="kubernetes"
+  register: available_packages
+  changed_when: false
+- name: Install packages
+  yum:
+    name:
+      - docker
+      - kubelet
+      - kubeadm
+      - kubectl
+    disable_excludes: kubernetes
+    state: present
+  become: true
+- name: Enable and start Docker
+  systemd:
+    name: docker
+    enabled: yes
+    state: restarted
+  become: true
+- name: Enable and start kubelet
+  systemd:
+    name: kubelet
+    enabled: yes
+    state: restarted
+  become: true
+- name: Check if Kubernetes is initialized
+  stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: kubelet_conf
+- name: Initialize Kubernetes
+  command: kubeadm init --pod-network-cidr=10.244.0.0/16
+    --ignore-preflight-errors=NumCPU,Mem
+  when: not kubelet_conf.stat.exists
+  ignore_errors: yes
+  become: true
+- name: Setup kubeconfig permissions
+  file:
+    path: /etc/kubernetes/admin.conf
+    mode: 644
+  become: true
+- name: Create .kube directory in root's home
+  file:
+    path: /root/.kube
+    state: directory
+    mode: "0755"
+  become: true
+- name: Copy admin.conf to root's kube config
+  copy:
+    src: /etc/kubernetes/admin.conf
+    dest: /root/.kube/config
+    remote_src: yes
+  become: true
+- name: Check if Flannel is installed
+  shell: kubectl get pods --all-namespaces | grep kube-flannel
+  register: flannel_installed
+  ignore_errors: yes
+- name: Install Flannel pod network
+  command: kubectl apply -f
+    https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+  when: flannel_installed.rc != 0
+  become: true
+- name: Generate join command and capture output
+  shell: kubeadm token create --print-join-command
+  register: join_command_output
+  become: true
+- name: Save join command to file in /root
+  copy:
+    content: "{{ join_command_output.stdout }}"
+    dest: /root/join-command.sh
+  become: true
+- name: Save join command to file in ec2-user's home
+  copy:
+    content: "{{ join_command_output.stdout }}"
+    dest: /home/ec2-user/join-command.sh
+  become: false
+- name: Set permissions for join-command.sh
+  file:
+    path: /root/join-command.sh
+    mode: "0644"
+  become: true
+- name: Copy join_command from CP to remote_files
+  fetch:
+    src: /home/ec2-user/join-command.sh
+    dest: ./remote_files/join-command.sh
+    become: true
+    flat: yes
+- name: Copy admin from CP to remote_files
+  fetch:
+    src: /etc/kubernetes/admin.conf
+    dest: ./remote_files/admin.conf
+    become: true
+    flat: yes

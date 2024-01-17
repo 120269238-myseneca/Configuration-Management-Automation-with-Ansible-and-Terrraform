@@ -1,0 +1,77 @@
+---
+- name: Create ~/.kube directory
+  become_user: ec2-user
+  file:
+    path: ~/.kube
+    state: directory
+- name: Copy join-command.sh
+  become_user: ec2-user
+  copy:
+    src: "{{ playbook_dir }}/remote_files/join-command.sh"
+    dest: ~/.kube/join-command.sh
+- name: Disable swap
+  command: swapoff -a
+  ignore_errors: yes
+- name: Copy join-command.sh to worker node
+  copy:
+    src: "{{ playbook_dir }}/remote_files/join-command.sh"
+    dest: /tmp/join-command.sh
+  become: yes
+- name: Reset zram0
+  command: zramctl --reset /dev/zram0
+  ignore_errors: yes
+- name: Clean YUM cache
+  yum:
+    update_cache: yes
+  become: true
+  environment:
+    YUM_DISABLE_REPO: kubernetes
+- name: Update YUM cache
+  yum:
+    update_cache: yes
+  become: true
+- name: Check for kubernetes.repo file
+  stat:
+    path: /etc/yum.repos.d/kubernetes.repo
+  register: kubernetes_repo
+- name: Add Kubernetes repository
+  ansible.builtin.yum_repository:
+    name: kubernetes
+    description: Kubernetes YUM repo
+    baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
+    gpgcheck: yes
+    gpgkey: https://packages.cloud.google.com/yum/doc/yum-key.gpg
+      https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+    enabled: yes
+  become: true
+- name: Install packages
+  yum:
+    name:
+      - docker
+      - kubelet
+      - kubeadm
+      - kubectl
+    disable_excludes: kubernetes
+    state: present
+  become: true
+- name: Enable and start Docker
+  systemd:
+    name: docker
+    enabled: yes
+    state: restarted
+  become: true
+- name: Enable and start kubelet
+  systemd:
+    name: kubelet
+    enabled: yes
+    state: restarted
+  become: true
+- name: Check if kubelet.conf exists
+  stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: kubelet_conf
+- name: Join the cluster
+  command: sh /tmp/join-command.sh
+  become: yes
+  when: not kubelet_conf.stat.exists
+  ignore_errors: yes

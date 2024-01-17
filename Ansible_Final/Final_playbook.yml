@@ -1,0 +1,28 @@
+---
+- hosts: localhost
+  gather_facts: no
+  roles:
+    - IP_Key
+- hosts: _controlplane
+  gather_facts: no
+  vars_files:
+    - groups_vars/controlplane.yml
+  roles:
+    - control_plane_run
+- hosts: _bastion_host
+  gather_facts: no
+  vars_files:
+    - groups_vars/bastion_host.yml
+  vars:
+    ansible_ssh_private_key_file: ./bastion_host_key
+    ansible_ssh_user: ec2-user
+    k8s_key_path: /home/ec2-user/k8s_key
+    ansible_host: "{{ bastion_host_public_ip }}"
+  roles:
+    - bastion_run
+- hosts: _worker
+  gather_facts: no
+  vars_files:
+    - groups_vars/worker.yml
+  roles:
+    - worker_node_s_run

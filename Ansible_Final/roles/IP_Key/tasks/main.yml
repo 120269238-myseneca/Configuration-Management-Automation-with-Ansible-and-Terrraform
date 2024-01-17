@@ -1,0 +1,37 @@
+---
+- name: Write Bastion Host Public IP to group_vars file
+  copy:
+    content: "bastion_host_public_ip: {{
+      hostvars[groups['_bastion_host'][0]]['public_ip'] }}"
+    dest: groups_vars/bastion_host.yml
+  when: "'_bastion_host' in groups and groups['_bastion_host'] | length > 0"
+- name: Check if bastion key exists
+  stat:
+    path: ./bastion_host_key
+  register: bastion_key_stat
+- name: Copy bastion key to Ansible_Final directory
+  copy:
+    src: ../terraform/bastion_host_key
+    dest: ./bastion_host_key
+    remote_src: no
+  when: not bastion_key_stat.stat.exists
+- name: Check if k8s key exists
+  stat:
+    path: ./k8s_key
+  register: k8s_key_stat
+- name: Copy k8s key to Ansible_Final directory
+  copy:
+    src: ../terraform/k8s_key
+    dest: ./k8s_key
+    remote_src: no
+  when: not k8s_key_stat.stat.exists
+- name: Set correct permissions for k8s key
+  file:
+    path: ./k8s_key
+    mode: "0600"
+  when: not k8s_key_stat.stat.exists
+- name: Set correct permissions for bastion key
+  file:
+    path: ./bastion_host_key
+    mode: "0600"
+  when: not bastion_key_stat.stat.exists

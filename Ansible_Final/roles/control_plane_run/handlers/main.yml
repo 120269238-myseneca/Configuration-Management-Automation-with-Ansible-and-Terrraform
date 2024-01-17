@@ -1,0 +1,6 @@
+---
+- name: Set kube config ownership
+  file:
+    path: ~/.kube/config
+    owner: "{{ ansible_user_id }}"
+    group: "{{ ansible_user_gid }}"
