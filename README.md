@@ -4,7 +4,13 @@
 
 ## Introduction
 
-This Ansible Assignment is designed to automate the deployment and management of a cloud infrastructure, culminating in the setup of an Nginx server on a Kubernetes cluster.
+This Ansible is designed to automate the deployment and management of a cloud infrastructure, culminating in the setup of an Nginx server on a Kubernetes cluster.
+
+## Architecture
+
+The following diagram shows the architecture of the infrastructure deployed.
+
+![Kubernetes infrastructure](infrastructure-architecture.png)
 
 ## Prerequisites
 
